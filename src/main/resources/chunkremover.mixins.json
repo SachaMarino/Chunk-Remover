@@ -1,0 +1,17 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "com.sachamarino.chunkremover.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [],
+  "client": [
+    "client.LargeMapScreenAccessor",
+    "client.LargeMapScreenMixin",
+    "client.MapRegionAccessor",
+    "client.MapScreenButtonPanelMixin",
+    "client.RegionMapPanelMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

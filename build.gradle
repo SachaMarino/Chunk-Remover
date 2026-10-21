@@ -1,0 +1,154 @@
+plugins {
+    id 'java-library'
+    id 'maven-publish'
+    id 'net.neoforged.moddev' version '2.0.148'
+    id 'idea'
+}
+
+tasks.named('wrapper', Wrapper).configure {
+    distributionType = Wrapper.DistributionType.BIN
+}
+
+version = mod_version
+group = mod_group_id
+
+sourceSets.main.resources {
+    srcDir('src/generated/resources')
+    exclude("src/generated/**/.cache")
+}
+
+repositories {
+    maven {
+        name = 'FTB'
+        url = 'https://maven.ftb.dev/releases'
+        content { includeGroup 'dev.ftb.mods' }
+    }
+    maven {
+        name = 'Architectury'
+        url = 'https://maven.architectury.dev/'
+        content { includeGroup 'dev.architectury' }
+    }
+}
+
+base {
+    archivesName = mod_id
+}
+
+// Minecraft 1.21.1 ships with Java 21, so the mod targets Java 21.
+java.toolchain.languageVersion = JavaLanguageVersion.of(21)
+
+neoForge {
+    version = project.neo_version
+
+    parchment {
+        mappingsVersion = project.parchment_mappings_version
+        minecraftVersion = project.parchment_minecraft_version
+    }
+
+    // Access transformers are auto-detected from src/main/resources/META-INF/accesstransformer.cfg
+
+    runs {
+        client {
+            client()
+        }
+
+        server {
+            server()
+            programArgument '--nogui'
+        }
+
+        // Development self tests, see com.sachamarino.chunkremover.devtest (not shipped in the jar).
+        selftest {
+            server()
+            programArgument '--nogui'
+            systemProperty 'chunkremover.selftest', 'true'
+            gameDirectory = project.file('run-selftest')
+        }
+
+        selftestClient {
+            client()
+            systemProperty 'chunkremover.selftest', 'true'
+            gameDirectory = project.file('run-selftest-client')
+        }
+
+        configureEach {
+            systemProperty 'forge.logging.markers', 'REGISTRIES'
+            logLevel = org.slf4j.event.Level.DEBUG
+        }
+    }
+
+    mods {
+        "${mod_id}" {
+            sourceSet(sourceSets.main)
+        }
+    }
+}
+
+configurations {
+    runtimeClasspath.extendsFrom localRuntime
+}
+
+dependencies {
+    // FTB Chunks and the mods it needs. They are all required at runtime, so they are plain
+    // implementation dependencies (available at compile time and in the dev runs).
+    // Transitive resolution is disabled: the published POMs reference loom-specific artifacts.
+    implementation("dev.ftb.mods:ftb-chunks-neoforge:${ftb_chunks_version}") { transitive = false }
+    implementation("dev.ftb.mods:ftb-library-neoforge:${ftb_library_version}") { transitive = false }
+    implementation("dev.ftb.mods:ftb-teams-neoforge:${ftb_teams_version}") { transitive = false }
+    implementation("dev.architectury:architectury-neoforge:${architectury_version}") { transitive = false }
+}
+
+// Expands ${...} placeholders in src/main/templates (neoforge.mods.toml).
+var generateModMetadata = tasks.register("generateModMetadata", ProcessResources) {
+    var replaceProperties = [
+            minecraft_version      : minecraft_version,
+            minecraft_version_range: minecraft_version_range,
+            neo_version            : neo_version,
+            loader_version_range   : loader_version_range,
+            mod_id                 : mod_id,
+            mod_name               : mod_name,
+            mod_license            : mod_license,
+            mod_version            : mod_version,
+            mod_authors            : mod_authors,
+            mod_description        : mod_description,
+            ftb_chunks_version     : ftb_chunks_version,
+            ftb_library_version    : ftb_library_version,
+            ftb_teams_version      : ftb_teams_version,
+            architectury_version   : architectury_version,
+    ]
+    inputs.properties replaceProperties
+    expand replaceProperties
+    from "src/main/templates"
+    into "build/generated/sources/modMetadata"
+}
+sourceSets.main.resources.srcDir generateModMetadata
+neoForge.ideSyncTask generateModMetadata
+
+publishing {
+    publications {
+        register('mavenJava', MavenPublication) {
+            from components.java
+        }
+    }
+    repositories {
+        maven {
+            url "file://${project.projectDir}/repo"
+        }
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}
+
+// The self test classes are only for the dev runs above.
+tasks.named('jar', Jar).configure {
+    exclude 'com/sachamarino/chunkremover/devtest/**'
+}
+
+idea {
+    module {
+        downloadSources = true
+        downloadJavadoc = true
+    }
+}
